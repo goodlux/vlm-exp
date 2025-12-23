@@ -1,0 +1,19 @@
+# Intermediate files
+observations.jsonl
+triples.jsonl
+
+# Output files (keep in outputs/ instead)
+ontology.txt
+*.txt
+
+# Python
+__pycache__/
+*.pyc
+.pytest_cache/
+
+# Data
+data/*
+!data/.gitkeep
+
+# uv
+.venv/
