@@ -115,7 +115,7 @@ Example:
         autoont_pipeline(
             args.images_dir,
             output_file,
-            vlm_model="qwen3-vl:32b",
+            vlm_model="qwen3-vl:8b",
             keep_intermediates=True  # Always keep intermediates
         )
     except KeyboardInterrupt:

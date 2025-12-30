@@ -15,5 +15,10 @@ __pycache__/
 data/*
 !data/.gitkeep
 
+# Generated outputs
+descriptions/
+graphs/
+aggregated/
+
 # uv
 .venv/

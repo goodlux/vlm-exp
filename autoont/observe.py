@@ -29,30 +29,32 @@ def extract_preview_image(dng_path: Path) -> Image.Image:
         return Image.open(dng_path)
 
 
-def get_vlm_sentences(image_path: Path, model: str = "qwen3-vl:2b") -> List[str]:
+def get_vlm_description(image_path: Path, model: str = "qwen3-vl:2b") -> str:
     """
-    Ask VLM to describe image using simple SPO sentences.
+    Ask VLM to describe image in natural language.
 
     Returns:
-        List of simple sentences in Subject-Predicate-Object format
+        Natural language description of the image
     """
-    prompt = """Describe this image in EXTREME DETAIL using simple sentences.
-Each sentence should state ONE FACT. Be as thorough and specific as possible.
+    prompt = """Describe this image in EXTREME DETAIL using natural, flowing language.
 
-IMPORTANT: Produce as many sentences as you can. Describe EVERYTHING you see. Be exhaustive.
+Write as if you are a photographer or art critic providing a comprehensive description.
+Be exhaustive and thorough about EVERYTHING that IS PRESENT in the image.
 
-Describe EVERYTHING:
-- ALL objects present (foreground, midground, background)
-- Colors, textures, materials of EACH object
-- Sizes, shapes, conditions
-- Spatial relationships (behind, on, near, next to, above, below, left, right)
-- Actions, poses, states
-- Lighting, shadows, reflections
-- Any text or symbols visible
-- Weather, atmosphere
+Describe in rich detail:
+- ALL objects visible (foreground, midground, background)
+- Colors, textures, materials, patterns
+- Sizes, shapes, conditions, states
+- Spatial relationships and composition
+- Actions, poses, gestures, expressions
+- Lighting conditions, shadows, highlights, reflections
+- Any text, symbols, or writing visible
+- Weather, atmosphere, mood
 - Fine details and small elements
+- Context and setting
 
-Write one sentence per line. Be thorough and specific about every element you can see. Do not add any commentary or explanation - just describe."""
+IMPORTANT: Only describe what you can actually SEE. Do NOT describe what is absent or missing.
+Write in complete paragraphs with natural flow. Be detailed and thorough."""
 
     # Load image
     print("[DEBUG] Extracting preview image...")
@@ -78,35 +80,32 @@ Write one sentence per line. Be thorough and specific about every element you ca
         print("[DEBUG] Ollama response received")
     except Exception as e:
         print(f"\n[ERROR] Ollama call failed: {e}")
-        return []
+        return ""
 
-    # Just get the text - no parsing or manipulation
-    text = response.get('message', {}).get('content', '')
-
-    # Split into lines, that's all
-    sentences = [line.strip() for line in text.split('\n') if line.strip()]
-
-    return sentences
+    # Return the raw text description
+    text = response.get('message', {}).get('content', '').strip()
+    return text
 
 
-def observe_images(image_dir: Path, output_path: Path, model: str = "qwen3-vl:2b"):
+def observe_images(image_dir: Path, output_dir: Path, model: str = "qwen3-vl:2b"):
     """
-    Process all images in directory and extract observations.
+    Process all images in directory and extract natural language descriptions.
 
-    Outputs JSONL file with one observation per line:
-    {"image": "path/to/image.jpg", "sentences": ["...", "..."]}
+    Outputs individual .txt files for each image: imagename_NL.txt
     """
     image_extensions = {'.jpg', '.jpeg', '.png', '.dng', '.tiff', '.tif'}
     image_paths = [p for p in image_dir.rglob('*') if p.suffix.lower() in image_extensions]
 
     print(f"Found {len(image_paths)} images in {image_dir}")
 
-    observations = []
+    # Create output directory
+    output_dir.mkdir(parents=True, exist_ok=True)
 
     import time
 
     total_start = time.time()
     processing_times = []
+    total_chars = 0
 
     for i, img_path in enumerate(image_paths, 1):
         print(f"\n{'='*80}")
@@ -115,35 +114,32 @@ def observe_images(image_dir: Path, output_path: Path, model: str = "qwen3-vl:2b
 
         try:
             start_time = time.time()
-            sentences = get_vlm_sentences(img_path, model=model)
+            description = get_vlm_description(img_path, model=model)
             elapsed = time.time() - start_time
 
-            observation = {
-                'image': str(img_path),
-                'sentences': sentences,
-                'sentence_count': len(sentences)
-            }
+            if description:
+                # Save to individual text file
+                output_file = output_dir / f"{img_path.stem}_NL.txt"
+                output_file.write_text(description)
 
-            observations.append(observation)
-            processing_times.append(elapsed)
+                processing_times.append(elapsed)
+                total_chars += len(description)
 
-            # Display VLM output with timing
-            print(f"\nVLM Output ({len(sentences)} sentences, {elapsed:.1f}s, {len(sentences)/elapsed:.1f} sent/sec):")
-            for j, sentence in enumerate(sentences, 1):
-                print(f"  {j}. {sentence}")
+                # Display VLM output with timing
+                print(f"\nVLM Output ({len(description)} chars, {elapsed:.1f}s):")
+                print("-" * 80)
+                print(description)
+                print("-" * 80)
+                print(f"✓ Saved to: {output_file}")
+            else:
+                print(f"✗ No description generated")
 
         except Exception as e:
             print(f"\n✗ Error: {e}")
             continue
 
-    # Write JSONL output
-    with output_path.open('w') as f:
-        for obs in observations:
-            f.write(json.dumps(obs) + '\n')
-
     # Summary stats
     total_elapsed = time.time() - total_start
-    total_sentences = sum(o['sentence_count'] for o in observations)
 
     print(f"\n{'='*80}")
     print("TIMING SUMMARY")
@@ -151,21 +147,21 @@ def observe_images(image_dir: Path, output_path: Path, model: str = "qwen3-vl:2b
     if processing_times:
         import statistics
         print(f"Total time: {total_elapsed:.1f}s")
-        print(f"Images processed: {len(observations)}")
+        print(f"Images processed: {len(processing_times)}")
         print(f"Average per image: {statistics.mean(processing_times):.1f}s")
         print(f"Fastest: {min(processing_times):.1f}s")
         print(f"Slowest: {max(processing_times):.1f}s")
-        print(f"Total sentences: {total_sentences}")
-        print(f"Average sentences/image: {total_sentences/len(observations):.1f}")
-    print(f"\nObservations saved to: {output_path}")
+        print(f"Total characters: {total_chars}")
+        print(f"Average chars/image: {total_chars/len(processing_times):.0f}")
+    print(f"\nDescriptions saved to: {output_dir}/")
 
 
 def main():
     import argparse
 
-    parser = argparse.ArgumentParser(description='Extract VLM observations from images')
+    parser = argparse.ArgumentParser(description='Extract VLM natural language descriptions from images')
     parser.add_argument('--images', type=Path, required=True, help='Directory of images')
-    parser.add_argument('--output', type=Path, default=Path('observations.jsonl'), help='Output JSONL file')
+    parser.add_argument('--output', type=Path, default=Path('descriptions'), help='Output directory for text files')
     parser.add_argument('--model', default='qwen3-vl:2b', help='Ollama VLM model')
 
     args = parser.parse_args()
